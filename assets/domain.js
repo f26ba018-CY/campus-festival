@@ -42,7 +42,7 @@
       return e
         ? e.stock -
             s.loans
-              .filter((l) => l.equipmentId === id && l.status !== "reserved")
+              .filter((l) => l.equipmentId === id && l.status !== "reserved" && l.status !== "returned")
               .reduce((n, l) => n + Number(l.quantity), 0)
         : 0;
     },
