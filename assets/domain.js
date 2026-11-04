@@ -67,7 +67,8 @@
           x.id !== r.id &&
           x.name === r.name &&
           x.date === r.date &&
-          x.start === r.start,
+          r.start < x.end &&
+          r.end > x.start,
       );
     },
     overdue(r, today) {
