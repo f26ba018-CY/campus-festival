@@ -235,6 +235,7 @@
           ["representative", "代表者"],
           ["members", "人数"],
           ["budget", "予算"],
+          ["status", "状態"],
           ["_remaining", "残額"],
         ];
       case "applications":
@@ -364,7 +365,7 @@
   function renderSettings() {
     return (
       head("データを、手元に。", "保存・復元と、操作する団体を管理します。") +
-      `<div class="help">これはブラウザ内で動く演習用システムです。ログイン認証や共同データ保存はありません。役割・団体の切り替えは業務操作の体験用です。同じデータで確認するときはJSONファイルを共有してください。端末やブラウザが変わると保存先も変わります。</div><div class="settings-grid">${panel("バックアップ", '<p>現在の業務データをJSONファイルとして保存します。</p><button id="backup">JSONを書き出す</button>')}${panel("データを復元", '<p>JSONファイルを読み込み、現在のデータを置き換えます。</p><input id="restore-file" aria-label="復元するJSON" type="file" accept=".json"><button id="restore" class="secondary">読み込む</button>')}${panel("操作する団体", `<p>団体代表として表示する団体を選択します。</p><select id="current-group" aria-label="操作する団体">${state.groups.map((g) => `<option value="${g.id}" ${g.id === state.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>`)}${panel("サンプルデータへ戻す", '<p>編集内容を破棄して、最初の状態に戻します。実行前にバックアップを保存してください。</p><button id="reset" class="danger">初期データへ戻す</button>')}</div>`
+      `<div class="help">これはブラウザ内で動く演習用システムです。ログイン認証や共同データ保存はありません。役割・団体の切り替えは業務操作の体験用です。同じデータで確認するときはJSONファイルを共有してください。端末やブラウザが変わると保存先も変わります。</div><div class="settings-grid">${panel("バックアップ", '<p>現在の業務データをJSONファイルとして保存します。</p><button id="backup">JSONを書き出す</button>')}${panel("データを復元", '<p>JSONファイルを読み込み、現在のデータを置き換えます。</p><input id="restore-file" aria-label="復元するJSON" type="file" accept=".json"><button id="restore" class="secondary">読み込む</button>')}${panel("操作する団体", `<p>団体代表として表示する団体を選択します。</p><select id="current-group" aria-label="操作する団体">${state.groups.filter((g) => g.status !== "削除済").map((g) => `<option value="${g.id}" ${g.id === state.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>`)}${panel("サンプルデータへ戻す", '<p>編集内容を破棄して、最初の状態に戻します。実行前にバックアップを保存してください。</p><button id="reset" class="danger">初期データへ戻す</button>')}</div>`
     );
   }
   function render() {
@@ -394,7 +395,7 @@
     if (type === "group" || type === "audience")
       return [
         ...(type === "audience" ? [["all", "全体"]] : []),
-        ...state.groups.map((g) => [g.id, g.name]),
+        ...state.groups.filter((g) => g.status !== "削除済").map((g) => [g.id, g.name]),
       ];
     if (type === "venue") return state.venues.map((v) => [v.id, v.name]);
     if (type === "equipment") return state.equipment.map((e) => [e.id, e.name]);
@@ -651,6 +652,7 @@
       return;
     }
     if (p === "expenses") r.amount = D.roundedAmount(r.amount);
+    if (!id && p === "groups") r.status = "作成済";
     if (id) state[p][state[p].findIndex((x) => x.id === id)] = r;
     else state[p].push(r);
     save(pages[p][1] + "を保存しました");
