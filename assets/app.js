@@ -608,7 +608,26 @@
           const data = JSON.parse((await file.text()).replace(/^\uFEFF/, ""));
           if (!D.validateImport(data) || !D.validateUniqueIds(data))
             throw Error("形式が不正です");
+          const last = (s) =>
+            s.activity?.[0]?.at
+              ? new Date(s.activity[0].at).toLocaleString("ja-JP")
+              : "記録なし";
+          const line = (s) =>
+            `${s.groups.length}団体 / 出店申請 ${s.applications.length}件`;
+          const msg = [
+            `ファイル：${file.name}`,
+            "",
+            `【読み込むデータ】${line(data)}`,
+            ` 最終操作：${last(data)}`,
+            `【現在のデータ】${line(state)}`,
+            ` 最終操作：${last(state)}`,
+            "",
+          "現在のデータを置き換えますか？",
+          ].join("\n");
           if (!confirm("現在のデータを置き換えますか？")) return;
+          data.activity ??= [];
+          data.role ??= state.role;
+          data.groupId ??= data.groups[0]?.id ?? "";
           state = data;
           save("バックアップを復元しました");
           render();

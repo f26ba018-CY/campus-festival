@@ -42,7 +42,7 @@
       return e
         ? e.stock -
             s.loans
-              .filter((l) => l.equipmentId === id && l.status !== "reserved")
+              .filter((l) => l.equipmentId === id && l.status !== "reserved" && l.status !== "returned")
               .reduce((n, l) => n + Number(l.quantity), 0)
         : 0;
     },
@@ -67,7 +67,8 @@
           x.id !== r.id &&
           x.name === r.name &&
           x.date === r.date &&
-          x.start === r.start,
+          r.start < x.end &&
+          r.end > x.start,
       );
     },
     overdue(r, today) {
@@ -103,10 +104,19 @@
       ].join("\r\n");
     },
     validateImport(data) {
-      return typeof data === "object" && data !== null;
+      const lists = ["groups", "venues", "applications", "reservations",
+        "equipment", "loans", "expenses", "shifts", "tasks", "notices"
+      ];
+      return typeof data === "object" && data !== null &&
+      lists.every((k) => Array.isArray(data[k]));
     },
     validateUniqueIds(data) {
-      return true;
+      return ["groups", "venues", "applications", "reservations",
+        "equipment", "loans", "expenses", "shifts", "tasks", "notices"]
+        .every((k) => {
+          const ids = data[k].map((r) => r.id);
+          return new Set(ids).size === ids.length;
+        });
     },
     editCopy(row) {
       return row;
