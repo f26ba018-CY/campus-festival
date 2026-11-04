@@ -104,10 +104,19 @@
       ].join("\r\n");
     },
     validateImport(data) {
-      return typeof data === "object" && data !== null;
+      const lists = ["groups", "venues", "applications", "reservations",
+        "equipment", "loans", "expenses", "shifts", "tasks", "notices"
+      ];
+      return typeof data === "object" && data !== null &&
+      lists.every((k) => Array.isArray(data[k]));
     },
     validateUniqueIds(data) {
-      return true;
+      return ["groups", "venues", "applications", "reservations",
+        "equipment", "loans", "expenses", "shifts", "tasks", "notices"]
+        .every((k) => {
+          const ids = data[k].map((r) => r.id);
+          return new Set(ids).size === ids.length;
+        });
     },
     editCopy(row) {
       return row;
