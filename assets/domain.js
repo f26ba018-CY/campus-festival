@@ -91,7 +91,10 @@
       if (a) a.status = "cancelled";
     },
     deleteGroup(s, id) {
-      s.groups = s.groups.filter((g) => g.id !== id);
+      const group = s.groups.find((g) => g.id === id);
+      if (!group) return false;
+
+      group.status = "削除済";
       return true;
     },
     nextId(rows, prefix) {
