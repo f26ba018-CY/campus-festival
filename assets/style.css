@@ -613,3 +613,13 @@ dialog::backdrop {
     padding: 20px;
   }
 }
+@media print {
+    .sidebar {
+        display: none !important;
+    }
+    .table-scroll {
+    overflow: visible !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
