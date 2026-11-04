@@ -32,6 +32,35 @@
     storageWarning =
       "保存済みデータを読み込めなかったため、初期データを表示しています。必要ならバックアップから復元してください。";
   }
+    let busy = false;
+  function lockButtons() {
+    document
+      .querySelectorAll(
+        "#content button:not(:disabled), #edit-form button:not(:disabled)",
+      )
+      .forEach((b) => {
+        b.disabled = true;
+        b.dataset.locked = "1";
+      });
+  }
+  function unlockButtons() {
+    document.querySelectorAll("button[data-locked]").forEach((b) => {
+      b.disabled = false;
+      delete b.dataset.locked;
+    });
+  }
+  async function withLock(fn) {
+    if (busy) return;
+    busy = true;
+    lockButtons();
+    try {
+      await fn();
+      await new Promise((r) => setTimeout(r, 300));
+    } finally {
+      busy = false;
+      unlockButtons();
+    }
+  }
   const labels = {
     draft: "下書き",
     submitted: "承認待ち",
@@ -358,7 +387,7 @@
         .join(
           "",
         )}</select><span class="subtitle">${rows.length} 件表示</span></div>${exportButton}</div>` +
-      `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}">承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
+            `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}" ${["approved", "cancelled"].includes(r.status) ? "disabled" : ""}>承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
     );
   }
   function renderSettings() {
@@ -389,6 +418,7 @@
           ? renderSettings()
           : renderList(p));
     bind(p);
+    if (busy) lockButtons();
   }
   function options(type) {
     if (type === "group" || type === "audience")
@@ -532,64 +562,73 @@
       document
         .querySelectorAll("[data-edit]")
         .forEach((b) => (b.onclick = () => openEditor(p, b.dataset.edit)));
-      document.querySelectorAll("[data-delete]").forEach(
+            document.querySelectorAll("[data-delete]").forEach(
         (b) =>
-          (b.onclick = () => {
-            if (!confirm("このデータを削除しますか？")) return;
-            if (p === "groups") D.deleteGroup(state, b.dataset.delete);
-            else state[p] = state[p].filter((r) => r.id !== b.dataset.delete);
-            save(pages[p][1] + "を削除しました");
-            render();
-          }),
+          (b.onclick = () =>
+            withLock(() => {
+              if (!confirm("このデータを削除しますか？")) return;
+              if (p === "groups") D.deleteGroup(state, b.dataset.delete);
+              else state[p] = state[p].filter((r) => r.id !== b.dataset.delete);
+              save(pages[p][1] + "を削除しました");
+              render();
+            })),
       );
-      document.querySelectorAll("[data-approve]").forEach(
+            document.querySelectorAll("[data-approve]").forEach(
         (b) =>
-          (b.onclick = () => {
-            if (!D.canApprove(state.role)) {
-              toast("実行委員の操作です");
-              return;
-            }
-            const a = state.applications.find(
-              (x) => x.id === b.dataset.approve,
-            );
-            const err = D.validateTime(a);
-            if (err) {
-              toast(err);
-              return;
-            }
-            if (D.venueConflict(state, a)) {
-              toast("会場予約が重複しています");
-              return;
-            }
-            D.approve(state, b.dataset.approve);
-            save("出店を承認し、会場を予約しました");
-            render();
-          }),
+          (b.onclick = () =>
+            withLock(() => {
+              if (!D.canApprove(state.role)) {
+                toast("実行委員の操作です");
+                return;
+              }
+              const a = state.applications.find(
+                (x) => x.id === b.dataset.approve,
+              );
+              if (!a || a.status === "approved" || a.status === "cancelled") {
+                toast("すでに処理済みです");
+                return;
+              }
+              const err = D.validateTime(a);
+              if (err) {
+                toast(err);
+                return;
+              }
+              if (D.venueConflict(state, a)) {
+                toast("会場予約が重複しています");
+                return;
+              }
+              D.approve(state, b.dataset.approve);
+              save("出店を承認し、会場を予約しました");
+              render();
+            })),
       );
-      document.querySelectorAll("[data-cancel]").forEach(
+            document.querySelectorAll("[data-cancel]").forEach(
         (b) =>
-          (b.onclick = () => {
-            if (!confirm("出店を取り消しますか？")) return;
-            D.cancelApplication(state, b.dataset.cancel);
-            save("出店を取り消しました");
-            render();
-          }),
+          (b.onclick = () =>
+            withLock(() => {
+              if (!confirm("出店を取り消しますか？")) return;
+              D.cancelApplication(state, b.dataset.cancel);
+              save("出店を取り消しました");
+              render();
+            })),
       );
       document.querySelectorAll("[data-return]").forEach(
         (b) =>
-          (b.onclick = () => {
-            D.returnLoan(state, b.dataset.return);
-            save("返却を記録しました");
-            render();
-          }),
+          (b.onclick = () =>
+            withLock(() => {
+              D.returnLoan(state, b.dataset.return);
+              save("返却を記録しました");
+              render();
+            })),
       );
       document.querySelectorAll("[data-done]").forEach(
         (b) =>
-          (b.onclick = () => {
-            state.tasks.find((t) => t.id === b.dataset.done).status = "done";
-            save("タスクを完了しました");
-            render();
-          }),
+          (b.onclick = () =>
+            withLock(() => {
+              state.tasks.find((t) => t.id === b.dataset.done).status = "done";
+              save("タスクを完了しました");
+              render();
+            })),
       );
     }
     if (p === "settings") {
@@ -598,50 +637,52 @@
           "festival-backup-" + today() + ".json",
           JSON.stringify(state, null, 2),
         );
-      $("#restore").onclick = async () => {
-        const file = $("#restore-file").files[0];
-        if (!file) {
-          toast("ファイルを選んでください");
-          return;
-        }
-        try {
-          const data = JSON.parse((await file.text()).replace(/^\uFEFF/, ""));
-          if (!D.validateImport(data) || !D.validateUniqueIds(data))
-            throw Error("形式が不正です");
-          const last = (s) =>
-            s.activity?.[0]?.at
-              ? new Date(s.activity[0].at).toLocaleString("ja-JP")
-              : "記録なし";
-          const line = (s) =>
-            `${s.groups.length}団体 / 出店申請 ${s.applications.length}件`;
-          const msg = [
-            `ファイル：${file.name}`,
-            "",
-            `【読み込むデータ】${line(data)}`,
-            ` 最終操作：${last(data)}`,
-            `【現在のデータ】${line(state)}`,
-            ` 最終操作：${last(state)}`,
-            "",
-          "現在のデータを置き換えますか？",
-          ].join("\n");
-          if (!confirm("現在のデータを置き換えますか？")) return;
-          data.activity ??= [];
-          data.role ??= state.role;
-          data.groupId ??= data.groups[0]?.id ?? "";
-          state = data;
-          save("バックアップを復元しました");
-          render();
-        } catch (e) {
-          toast("読み込めませんでした：" + e.message);
-        }
-      };
-      $("#reset").onclick = () => {
+      $("#restore").onclick = () =>
+        withLock(async () => {
+          const file = $("#restore-file").files[0];
+          if (!file) {
+            toast("ファイルを選んでください");
+            return;
+          }
+          try {
+            const data = JSON.parse((await file.text()).replace(/^\uFEFF/, ""));
+            if (!D.validateImport(data) || !D.validateUniqueIds(data))
+              throw Error("形式が不正です");
+            const last = (s) =>
+              s.activity?.[0]?.at
+                ? new Date(s.activity[0].at).toLocaleString("ja-JP")
+                : "記録なし";
+            const line = (s) =>
+              `${s.groups.length}団体 / 出店申請 ${s.applications.length}件`;
+            const msg = [
+              `ファイル：${file.name}`,
+              "",
+              `【読み込むデータ】${line(data)}`,
+              ` 最終操作：${last(data)}`,
+              `【現在のデータ】${line(state)}`,
+              ` 最終操作：${last(state)}`,
+              "",
+              "現在のデータを置き換えますか？",
+            ].join("\n");
+            if (!confirm(msg)) return;
+            data.activity ??= [];
+            data.role ??= state.role;
+            data.groupId ??= data.groups[0]?.id ?? "";
+            state = data;
+            save("バックアップを復元しました");
+            render();
+          } catch (e) {
+            toast("読み込めませんでした：" + e.message);
+          }
+        });
+      $("#reset").onclick = () => 
+        withLock(() => {
         if (!confirm("編集内容を破棄し、初期データへ戻しますか？")) return;
         state = structuredClone(FestivalSeed);
         storageWarning = "";
         save("初期データへ戻しました");
         render();
-      };
+      });
       $("#current-group").onchange = (e) => {
         state.groupId = e.target.value;
         save("操作する団体を変更しました");
@@ -654,7 +695,8 @@
         e.target.type === "number" ? Number(e.target.value) : e.target.value;
   });
   $("#edit-form").onsubmit = (e) => {
-    e.preventDefault();
+  e.preventDefault();
+  withLock(() => {
     const { p, id } = editing;
     const r = {
       ...(editing.row || {}),
@@ -675,6 +717,7 @@
     save(pages[p][1] + "を保存しました");
     $("#editor").close();
     render();
+  });
   };
   function closeEditor() {
     $("#editor").close();

@@ -95,7 +95,11 @@
       return true;
     },
     nextId(rows, prefix) {
-      return prefix + String(rows.length + 1).padStart(2, "0");
+      const max = rows.reduce(
+        (m, r) => Math.max(m, Number(String(r.id).slice(prefix.length)) || 0),
+        0,
+      );
+      return prefix + String(max + 1).padStart(2, "0");
     },
     csv(rows, keys) {
       return [
