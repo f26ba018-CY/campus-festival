@@ -139,6 +139,12 @@
   function today() {
     return new Date().toLocaleDateString("sv-SE");
   }
+
+  function tomorrow() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toLocaleDateString("sv-SE");
+}
   function money(n) {
     return "¥" + Number(n).toLocaleString("ja-JP");
   }
@@ -358,7 +364,7 @@
         .join(
           "",
         )}</select><span class="subtitle">${rows.length} 件表示</span></div>${exportButton}</div>` +
-      `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}">承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
+      `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-copy="${esc(r.id)}">複製</button>` : ""}${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}">承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
     );
   }
   function renderSettings() {
@@ -419,9 +425,9 @@
     };
     return (map[type] || []).map((s) => [s, labels[s] || s]);
   }
-  function openEditor(p, id) {
+  function openEditor(p, id, copyRow = null) {
     const original = id ? state[p].find((r) => r.id === id) : null;
-    let row = original ? D.editCopy(original) : {};
+    let row = copyRow ? D.editCopy(copyRow) : original ? D.editCopy(original) : {};
     if (p === "expenses" && original) row = D.expenseForEdit(original);
     editing = { p, id, row, original };
     $("#dialog-title").textContent =
@@ -532,6 +538,21 @@
       document
         .querySelectorAll("[data-edit]")
         .forEach((b) => (b.onclick = () => openEditor(p, b.dataset.edit)));
+      
+      document.querySelectorAll("[data-copy]").forEach(
+        (b) =>
+         (b.onclick = () => {
+          const original = state[p].find((r) => r.id === b.dataset.copy);
+          if (!original) return;
+
+         const row = D.editCopy(original);
+         row.date = tomorrow();
+
+         openEditor(p, null, row);
+        }),
+      );
+      
+      
       document.querySelectorAll("[data-delete]").forEach(
         (b) =>
           (b.onclick = () => {

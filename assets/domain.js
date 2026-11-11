@@ -14,7 +14,7 @@
     },
     pending(s) {
       return s.applications.filter(
-        (a) => a.status === "submitted" || a.status === "draft",
+        (a) => a.status === "submitted" || a.status === "submitted",
       ).length;
     },
     expenses(s, groupId) {
@@ -59,7 +59,7 @@
       return "";
     },
     validateTime(r) {
-      return r.start > r.end ? "終了時刻を開始時刻より後にしてください" : "";
+      return r.start >= r.end ? "終了時刻を開始時刻より後にしてください" : "";
     },
     shiftConflict(s, r) {
       return s.shifts.some(
