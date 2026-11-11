@@ -709,6 +709,9 @@
     fields[p]
       .filter((f) => f[2] === "number")
       .forEach((f) => (r[f[0]] = Number(r[f[0]])));
+    Object.keys(r).forEach((k) => {            
+      if (typeof r[k] === "string") r[k] = r[k].trim();
+    });
     r.id = id || D.nextId(state[p], prefixes[p]);
     const error = validate(p, r);
     if (error) {

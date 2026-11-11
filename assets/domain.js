@@ -145,7 +145,8 @@
       return Number(r.end.split(":")[0]) - Number(r.start.split(":")[0]);
     },
     duplicateGroup(s, name, id) {
-      return s.groups.some((g) => g.id !== id && g.name === name);
+      const norm = (v) => String(v ?? "").normalize("NFKC").trim();
+      return s.groups.some((g) => g.id !== id && norm(g.name) === norm(name));
     },
     expenseForEdit(row) {
       return { ...row, status: "submitted" };
