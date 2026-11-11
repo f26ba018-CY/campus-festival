@@ -72,6 +72,8 @@
     returned: "返却済み",
     todo: "未着手",
     done: "完了",
+    running: "活動中",
+    ended: "活動終了",
   };
   const pages = {
     dashboard: ["◈", "ダッシュボード", "OVERVIEW"],
@@ -91,6 +93,7 @@
       ["representative", "代表者", "text"],
       ["members", "所属人数", "number"],
       ["budget", "予算（円）", "number"],
+      ["status", "活動状態", "groupStatus"],
     ],
     applications: [
       ["title", "企画名", "text"],
@@ -264,6 +267,7 @@
           ["representative", "代表者"],
           ["members", "人数"],
           ["budget", "予算"],
+          ["status", "活動状態"],
           ["_remaining", "残額"],
         ];
       case "applications":
@@ -397,6 +401,7 @@
     );
   }
   function render() {
+    state.groups.forEach((g) => (g.status ??= "running"));
     let p = page();
     if (!pages[p]) {
       location.hash = "dashboard";
@@ -420,20 +425,19 @@
     bind(p);
     if (busy) lockButtons();
   }
-  function options(type) {
+  function options(type, current) {
     if (type === "group" || type === "audience")
       return [
         ...(type === "audience" ? [["all", "全体"]] : []),
-        ...state.groups.map((g) => [g.id, g.name]),
-      ];
-    if (type === "venue") return state.venues.map((v) => [v.id, v.name]);
-    if (type === "equipment") return state.equipment.map((e) => [e.id, e.name]);
-    if (type === "application")
-      return [
-        ["", "関連なし"],
-        ...state.applications.map((a) => [a.id, a.title]),
+        ...state.groups
+          .filter((g) => g.status !== "ended" || g.id === current)
+          .map((g) => [
+            g.id,
+            g.name + (g.status === "ended" ? "（活動終了）" : ""),
+          ]),
       ];
     const map = {
+      groupStatus: ["running", "ended"],
       applicationStatus: [
         "draft",
         "submitted",
@@ -466,7 +470,7 @@
         else if (["text", "number", "date", "time"].includes(type))
           input = `<input name="${k}" type="${type}" ${type === "number" ? 'step="any"' : ""} value="${esc(value)}" ${["title", "name"].includes(k) ? "required" : ""}>`;
         else
-          input = `<select name="${k}">${options(type)
+          input = `<select name="${k}">${options(type, value)
             .map(
               ([v, t]) =>
                 `<option value="${esc(v)}" ${String(value) === v ? "selected" : ""}>${esc(t)}</option>`,
