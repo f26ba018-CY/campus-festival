@@ -11,6 +11,7 @@
         representative: "青木 はる",
         members: 18,
         budget: 80000,
+        status: "作成済",
       },
       {
         id: "G02",
@@ -18,6 +19,7 @@
         representative: "石井 みな",
         members: 12,
         budget: 60000,
+        status: "作成済",
       },
       {
         id: "G03",
@@ -25,6 +27,7 @@
         representative: "上田 そう",
         members: 24,
         budget: 120000,
+        status: "作成済",
       },
       {
         id: "G04",
@@ -32,6 +35,7 @@
         representative: "遠藤 りこ",
         members: 9,
         budget: 45000,
+        status: "作成済",
       },
       {
         id: "G05",
@@ -39,6 +43,7 @@
         representative: "大野 れん",
         members: 16,
         budget: 90000,
+        status: "作成済",
       },
       {
         id: "G06",
@@ -46,6 +51,7 @@
         representative: "加藤 あおい",
         members: 8,
         budget: 35000,
+        status: "作成済",
       },
     ],
     venues: [

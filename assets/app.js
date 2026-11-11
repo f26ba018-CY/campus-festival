@@ -351,7 +351,7 @@
     if (k === "_time") return esc(r.start) + " – " + esc(r.end);
     if (k === "_hours") return D.shiftHours(r) + " h";
     if (k === "_late")
-      return D.loanOverdue(r, today())
+      return D.loanOverdue(r, today()) && r.status != "returned"
         ? '<span class="badge rejected">期限超過</span>'
         : "—";
     return esc(r[k]);
@@ -397,7 +397,7 @@
   function renderSettings() {
     return (
       head("データを、手元に。", "保存・復元と、操作する団体を管理します。") +
-      `<div class="help">これはブラウザ内で動く演習用システムです。ログイン認証や共同データ保存はありません。役割・団体の切り替えは業務操作の体験用です。同じデータで確認するときはJSONファイルを共有してください。端末やブラウザが変わると保存先も変わります。</div><div class="settings-grid">${panel("バックアップ", '<p>現在の業務データをJSONファイルとして保存します。</p><button id="backup">JSONを書き出す</button>')}${panel("データを復元", '<p>JSONファイルを読み込み、現在のデータを置き換えます。</p><input id="restore-file" aria-label="復元するJSON" type="file" accept=".json"><button id="restore" class="secondary">読み込む</button>')}${panel("操作する団体", `<p>団体代表として表示する団体を選択します。</p><select id="current-group" aria-label="操作する団体">${state.groups.map((g) => `<option value="${g.id}" ${g.id === state.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>`)}${panel("サンプルデータへ戻す", '<p>編集内容を破棄して、最初の状態に戻します。実行前にバックアップを保存してください。</p><button id="reset" class="danger">初期データへ戻す</button>')}</div>`
+      `<div class="help">これはブラウザ内で動く演習用システムです。ログイン認証や共同データ保存はありません。役割・団体の切り替えは業務操作の体験用です。同じデータで確認するときはJSONファイルを共有してください。端末やブラウザが変わると保存先も変わります。</div><div class="settings-grid">${panel("バックアップ", '<p>現在の業務データをJSONファイルとして保存します。</p><button id="backup">JSONを書き出す</button>')}${panel("データを復元", '<p>JSONファイルを読み込み、現在のデータを置き換えます。</p><input id="restore-file" aria-label="復元するJSON" type="file" accept=".json"><button id="restore" class="secondary">読み込む</button>')}${panel("操作する団体", `<p>団体代表として表示する団体を選択します。</p><select id="current-group" aria-label="操作する団体">${state.groups.filter((g) => g.status !== "削除済").map((g) => `<option value="${g.id}" ${g.id === state.groupId ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>`)}${panel("サンプルデータへ戻す", '<p>編集内容を破棄して、最初の状態に戻します。実行前にバックアップを保存してください。</p><button id="reset" class="danger">初期データへ戻す</button>')}</div>`
     );
   }
   function render() {
@@ -666,9 +666,13 @@
               `【現在のデータ】${line(state)}`,
               ` 最終操作：${last(state)}`,
               "",
-              "現在のデータを置き換えますか？",
+              "現在のデータを置き換えますか？置き換える場合は自動で現在のデータをバックアップします。",
             ].join("\n");
             if (!confirm(msg)) return;
+            download(
+            "auto-backup-" + today() + ".json",
+            JSON.stringify(state, null, 2),
+            );
             data.activity ??= [];
             data.role ??= state.role;
             data.groupId ??= data.groups[0]?.id ?? "";
