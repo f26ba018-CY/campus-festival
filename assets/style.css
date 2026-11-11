@@ -614,12 +614,9 @@ dialog::backdrop {
   }
 }
 @media print {
-    .sidebar {
-        display: none !important;
-    }
-    .table-scroll {
-    overflow: visible !important;
-    width: auto !important;
-    max-width: none !important;
+    .sidebar,
+  header,
+  #add-row  {
+    display: none !important;
   }
 }
