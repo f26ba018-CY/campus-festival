@@ -348,7 +348,7 @@
     if (k === "_time") return esc(r.start) + " – " + esc(r.end);
     if (k === "_hours") return D.shiftHours(r) + " h";
     if (k === "_late")
-      return D.loanOverdue(r, today())
+      return D.loanOverdue(r, today()) && r.status != "returned"
         ? '<span class="badge rejected">期限超過</span>'
         : "—";
     return esc(r[k]);
@@ -663,9 +663,13 @@
               `【現在のデータ】${line(state)}`,
               ` 最終操作：${last(state)}`,
               "",
-              "現在のデータを置き換えますか？",
+              "現在のデータを置き換えますか？置き換える場合は自動で現在のデータをバックアップします。",
             ].join("\n");
             if (!confirm(msg)) return;
+            download(
+            "auto-backup-" + today() + ".json",
+            JSON.stringify(state, null, 2),
+            );
             data.activity ??= [];
             data.role ??= state.role;
             data.groupId ??= data.groups[0]?.id ?? "";
