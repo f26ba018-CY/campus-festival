@@ -20,6 +20,8 @@
     filterText = "",
     filterStatus = "",
     sortKey = "id",
+    loanCheckStart = "", // 追加：期間確認用の開始日
+    loanCheckEnd = "",   // 追加：期間確認用の終了日
     editing = null,
     toastTimer;
   try {
@@ -32,7 +34,7 @@
     storageWarning =
       "保存済みデータを読み込めなかったため、初期データを表示しています。必要ならバックアップから復元してください。";
   }
-    let busy = false;
+  let busy = false;
   function lockButtons() {
     document
       .querySelectorAll(
@@ -121,7 +123,8 @@
       ["groupId", "利用団体", "group"],
       ["applicationId", "関連する出店申請", "application"],
       ["quantity", "数量", "number"],
-      ["due", "返却期限", "date"],
+      ["start", "利用開始日", "date"], // 追加
+      ["due", "返却期限（終了日）", "date"],
       ["status", "状態", "loanStatus"],
     ],
     expenses: [
@@ -171,6 +174,12 @@
   function today() {
     return new Date().toLocaleDateString("sv-SE");
   }
+
+  function tomorrow() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toLocaleDateString("sv-SE");
+}
   function money(n) {
     return "¥" + Number(n).toLocaleString("ja-JP");
   }
@@ -180,6 +189,76 @@
   function badge(v) {
     return `<span class="badge ${esc(v)}">${esc(labels[v] || v)}</span>`;
   }
+
+  // --- 追加：期間指定での備品貸出可能数の計算ヘルパー ---
+  function parseDateUTC(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : NaN;
+  }
+  function formatDateUTC(ms) {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
+  function loanRange(l) {
+    const end = l.due || l.start || "";
+    const start = l.start || l.due || "";
+    return start <= end ? [start, end] : [end, start];
+  }
+  function availableInPeriod(equipmentId, startStr, endStr, excludeLoanId = null) {
+    const eq = state.equipment.find((e) => e.id === equipmentId);
+    if (!eq) return 0;
+    const stock = Number(eq.stock) || 0;
+    const from = startStr || endStr;
+    const to = endStr || startStr;
+    if (!from && !to) return D.available(state, equipmentId);
+    if (from > to) return null;
+
+    const startMs = parseDateUTC(from);
+    const endMs = parseDateUTC(to);
+    if (Number.isNaN(startMs) || Number.isNaN(endMs)) return null;
+
+    const activeLoans = state.loans.filter(
+      (l) =>
+        l.equipmentId === equipmentId &&
+        l.status !== "returned" &&
+        l.id !== excludeLoanId,
+    );
+
+    let maxUsed = 0;
+    for (let ms = startMs, guard = 0; ms <= endMs && guard < 400; ms += 86400000, guard++) {
+      const d = formatDateUTC(ms);
+      let usedOnDay = 0;
+      for (const l of activeLoans) {
+        const [ls, le] = loanRange(l);
+        if (ls <= d && d <= le) {
+          usedOnDay += Number(l.quantity) || 0;
+        }
+      }
+      if (usedOnDay > maxUsed) maxUsed = usedOnDay;
+    }
+    return Math.max(0, stock - maxUsed);
+  }
+  function updateLoanAvailabilityHint() {
+    const box = $("#loan-availability-hint");
+    const form = $("#edit-form");
+    if (!box || !form || editing?.p !== "loans") return;
+    const fd = new FormData(form);
+    const eqId = fd.get("equipmentId");
+    const s = fd.get("start");
+    const e = fd.get("due");
+    if (!s || !e) {
+      box.textContent = "利用開始日と返却期限を入力すると貸出可能数を表示します。";
+      return;
+    }
+    if (s > e) {
+      box.textContent = "※ 利用開始日は返却期限以前の日付にしてください。";
+      return;
+    }
+    const avail = availableInPeriod(eqId, s, e, editing.id);
+    const eq = state.equipment.find((x) => x.id === eqId);
+    box.textContent = `指定期間（${s} 〜 ${e}）の貸出可能数：${avail} / ${eq?.stock ?? 0}`;
+  }
+  // ----------------------------------------------------
+
   function toast(msg) {
     $("#toast").textContent = msg;
     $("#toast").style.display = "block";
@@ -297,6 +376,7 @@
           ["equipmentId", "備品"],
           ["groupId", "団体"],
           ["quantity", "数量"],
+          ["start", "開始日"], // 追加
           ["due", "返却期限"],
           ["status", "状態"],
           ["_late", "期限確認"],
@@ -350,6 +430,7 @@
     if (k === "_remaining") return money(D.remaining(state, r.id));
     if (k === "_time") return esc(r.start) + " – " + esc(r.end);
     if (k === "_hours") return D.shiftHours(r) + " h";
+    if (k === "start") return esc(r.start || r.due || "—");
     if (k === "_late")
       return D.loanOverdue(r, today()) && r.status != "returned"
         ? '<span class="badge rejected">期限超過</span>'
@@ -367,8 +448,38 @@
     const cols = columns(p),
       statuses = [...new Set(state[p].map((r) => r.status).filter(Boolean))];
     let summary = "";
-    if (p === "loans")
-      summary = `<div class="stats">${state.equipment.map((e) => stat(esc(e.name), D.available(state, e.id) + "<small> / " + e.stock + "</small>", "貸出可能 / 台帳数")).join("")}</div>`;
+    if (p === "loans") {
+      const hasRange = Boolean(loanCheckStart || loanCheckEnd);
+      const from = loanCheckStart || loanCheckEnd;
+      const to = loanCheckEnd || loanCheckStart;
+      const invalidRange = Boolean(from && to && from > to);
+      const rangeLabel = invalidRange
+        ? "※ 開始日は終了日以前を選択してください"
+        : hasRange
+          ? `${from} 〜 ${to} 貸出可能 / 台帳数`
+          : "現在の貸出可能 / 台帳数";
+
+      summary =
+        `<div class="toolbar"><div class="filters">` +
+        `<span class="subtitle">利用期間で空き確認：</span>` +
+        `<input id="loan-check-start" type="date" aria-label="利用開始日" value="${esc(loanCheckStart)}">` +
+        `<span>〜</span>` +
+        `<input id="loan-check-end" type="date" aria-label="利用終了日" value="${esc(loanCheckEnd)}">` +
+        `<button type="button" class="secondary small" id="loan-check-clear">クリア</button>` +
+        `</div></div>` +
+        `<div class="stats">${state.equipment
+          .map((e) => {
+            const avail = invalidRange
+              ? "—"
+              : availableInPeriod(e.id, loanCheckStart, loanCheckEnd);
+            return stat(
+              esc(e.name),
+              avail + "<small> / " + e.stock + "</small>",
+              rangeLabel,
+            );
+          })
+          .join("")}</div>`;
+    }
     if (p === "reservations")
       summary = `<div class="stats">${state.venues.map((v) => stat(esc(v.name), v.capacity + "<small> 名</small>", "予約 " + D.venueUsage(state, v.id) + " 件")).join("")}</div>`;
     if (p === "expenses")
@@ -391,7 +502,7 @@
         .join(
           "",
         )}</select><span class="subtitle">${rows.length} 件表示</span></div>${exportButton}</div>` +
-            `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}" ${["approved", "cancelled"].includes(r.status) ? "disabled" : ""}>承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
+      `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-copy="${esc(r.id)}">複製</button>` : ""}${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}">承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
     );
   }
   function renderSettings() {
@@ -453,10 +564,18 @@
     };
     return (map[type] || []).map((s) => [s, labels[s] || s]);
   }
-  function openEditor(p, id) {
+  function openEditor(p, id, copyRow = null) {
     const original = id ? state[p].find((r) => r.id === id) : null;
-    let row = original ? D.editCopy(original) : {};
+    let row = copyRow ? D.editCopy(copyRow) : original ? D.editCopy(original) : {};
     if (p === "expenses" && original) row = D.expenseForEdit(original);
+    if (p === "loans") {
+      if (original) {
+        row.start = row.start || row.due || today();
+      } else {
+        if (loanCheckStart) row.start = loanCheckStart;
+        if (loanCheckEnd || loanCheckStart) row.due = loanCheckEnd || loanCheckStart;
+      }
+    }
     editing = { p, id, row, original };
     $("#dialog-title").textContent =
       pages[p][1] + " / " + (id ? "編集" : "新規登録");
@@ -480,6 +599,7 @@
       })
       .join("");
     $("#editor").showModal();
+    if (p === "loans") updateLoanAvailabilityHint();
   }
   function validate(p, r) {
     if (
@@ -494,8 +614,8 @@
               "venueId",
               "equipmentId",
               "date",
-              "due",
               "start",
+              "due",
               "end",
             ].includes(f[0]),
           )
@@ -522,20 +642,33 @@
     if (p === "loans") {
       const err = D.validateQuantity(r.quantity);
       if (err) return err;
-      const previous = state.loans.find((l) => l.id === r.id);
-      const allowance =
-        D.available(state, r.equipmentId) +
-        (previous &&
-        previous.equipmentId === r.equipmentId &&
-        previous.status !== "reserved"
-          ? Number(previous.quantity)
-          : 0);
+      if (r.start > r.due)
+        return "利用開始日は返却期限以前の日付にしてください";
+      const allowance = availableInPeriod(r.equipmentId, r.start, r.due, r.id);
+      if (allowance === null) return "利用期間の日付が正しくありません";
       if (r.status !== "returned" && r.quantity > allowance)
-        return "貸出可能数を超えています";
+        return `指定期間の貸出可能数（${allowance}）を超えています`;
     }
     return "";
   }
   function bind(p) {
+    if (p === "loans") {
+      $("#loan-check-start").onchange = (e) => {
+        loanCheckStart = e.target.value;
+        if (loanCheckStart && !loanCheckEnd) loanCheckEnd = loanCheckStart;
+        render();
+      };
+      $("#loan-check-end").onchange = (e) => {
+        loanCheckEnd = e.target.value;
+        if (loanCheckEnd && !loanCheckStart) loanCheckStart = loanCheckEnd;
+        render();
+      };
+      $("#loan-check-clear").onclick = () => {
+        loanCheckStart = "";
+        loanCheckEnd = "";
+        render();
+      };
+    }
     if (fields[p]) {
       $("#add-row").onclick = () => openEditor(p);
       $("#search").oninput = (e) => {
@@ -566,7 +699,22 @@
       document
         .querySelectorAll("[data-edit]")
         .forEach((b) => (b.onclick = () => openEditor(p, b.dataset.edit)));
-            document.querySelectorAll("[data-delete]").forEach(
+      
+      document.querySelectorAll("[data-copy]").forEach(
+        (b) =>
+         (b.onclick = () => {
+          const original = state[p].find((r) => r.id === b.dataset.copy);
+          if (!original) return;
+
+         const row = D.editCopy(original);
+         row.date = tomorrow();
+
+         openEditor(p, null, row);
+        }),
+      );
+      
+      
+      document.querySelectorAll("[data-delete]").forEach(
         (b) =>
           (b.onclick = () =>
             withLock(() => {
@@ -577,7 +725,7 @@
               render();
             })),
       );
-            document.querySelectorAll("[data-approve]").forEach(
+      document.querySelectorAll("[data-approve]").forEach(
         (b) =>
           (b.onclick = () =>
             withLock(() => {
@@ -606,7 +754,7 @@
               render();
             })),
       );
-            document.querySelectorAll("[data-cancel]").forEach(
+      document.querySelectorAll("[data-cancel]").forEach(
         (b) =>
           (b.onclick = () =>
             withLock(() => {
@@ -683,14 +831,14 @@
             toast("読み込めませんでした：" + e.message);
           }
         });
-      $("#reset").onclick = () => 
+      $("#reset").onclick = () =>
         withLock(() => {
-        if (!confirm("編集内容を破棄し、初期データへ戻しますか？")) return;
-        state = structuredClone(FestivalSeed);
-        storageWarning = "";
-        save("初期データへ戻しました");
-        render();
-      });
+          if (!confirm("編集内容を破棄し、初期データへ戻しますか？")) return;
+          state = structuredClone(FestivalSeed);
+          storageWarning = "";
+          save("初期データへ戻しました");
+          render();
+        });
       $("#current-group").onchange = (e) => {
         state.groupId = e.target.value;
         save("操作する団体を変更しました");
@@ -701,33 +849,33 @@
     if (editing?.original && e.target.name && editing.p !== "expenses")
       editing.row[e.target.name] =
         e.target.type === "number" ? Number(e.target.value) : e.target.value;
+    if (editing?.p === "loans") updateLoanAvailabilityHint();
   });
   $("#edit-form").onsubmit = (e) => {
-  e.preventDefault();
-  withLock(() => {
-    const { p, id } = editing;
-    const r = {
-      ...(editing.row || {}),
-      ...Object.fromEntries(new FormData(e.target)),
-    };
-    fields[p]
-      .filter((f) => f[2] === "number")
-      .forEach((f) => (r[f[0]] = Number(r[f[0]])));
-    Object.keys(r).forEach((k) => {            
-      if (typeof r[k] === "string") r[k] = r[k].trim();
+    e.preventDefault();
+    withLock(() => {
+      const { p, id } = editing;
+      const r = {
+        ...(editing.row || {}),
+        ...Object.fromEntries(new FormData(e.target)),
+      };
+      fields[p]
+        .filter((f) => f[2] === "number")
+        .forEach((f) => (r[f[0]] = Number(r[f[0]])));
+      r.id = id || D.nextId(state[p], prefixes[p]);
+      const error = validate(p, r);
+      if (error) {
+        toast(error);
+        return;
+      }
+      if (p === "expenses") r.amount = D.roundedAmount(r.amount);
+      if (!id && p === "groups") r.status = "作成済";
+      if (id) state[p][state[p].findIndex((x) => x.id === id)] = r;
+      else state[p].push(r);
+      save(pages[p][1] + "を保存しました");
+      $("#editor").close();
+      render();
     });
-    r.id = id || D.nextId(state[p], prefixes[p]);
-    const error = validate(p, r);
-    if (error) {
-      toast(error);
-      return;
-    }
-    if (id) state[p][state[p].findIndex((x) => x.id === id)] = r;
-    else state[p].push(r);
-    save(pages[p][1] + "を保存しました");
-    $("#editor").close();
-    render();
-  });
   };
   function closeEditor() {
     $("#editor").close();
