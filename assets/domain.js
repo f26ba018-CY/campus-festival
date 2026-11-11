@@ -56,7 +56,9 @@
     validateExpense(r) {
       const amount = Number(r.amount);
       if (!Number.isFinite(amount)) return "金額は数値で入力してください";
-      if (Math.trunc(amount) < 1)
+      if (!Number.isInteger(amount))
+        return "金額は円単位の整数で入力してください（小数点は使えません）";
+      if (amount < 1)
         return "金額が未定の経費は申請できません。1円以上で入力してください";
       return "";
     },
