@@ -54,8 +54,10 @@
       l.status = "returned";
     },
     validateExpense(r) {
-      if (!Number.isFinite(Number(r.amount)))
-        return "金額は数値で入力してください";
+      const amount = Number(r.amount);
+      if (!Number.isFinite(amount)) return "金額は数値で入力してください";
+      if (Math.trunc(amount) < 1)
+        return "金額が未定の経費は申請できません。1円以上で入力してください";
       return "";
     },
     validateTime(r) {
