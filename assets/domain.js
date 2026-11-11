@@ -19,12 +19,12 @@
     },
     expenses(s, groupId) {
       return s.expenses
-        .filter((x) => !groupId || x.groupId === groupId)
+        .filter((x) => x.status !== "rejected" && (!groupId || x.groupId === groupId))
         .reduce((n, x) => n + Number(x.amount), 0);
     },
     remaining(s, groupId) {
       const g = s.groups.find((g) => g.id === groupId);
-      return (g?.budget || 50000) - D.expenses(s,groupId);
+      return (g?.budget || 50000) - D.expenses(s, groupId);
     },
     venueConflict(s, r) {
       return s.reservations.some(
@@ -54,8 +54,12 @@
       l.status = "returned";
     },
     validateExpense(r) {
-      if (!Number.isFinite(Number(r.amount)))
-        return "金額は数値で入力してください";
+      const amount = Number(r.amount);
+      if (!Number.isFinite(amount)) return "金額は数値で入力してください";
+      if (!Number.isInteger(amount))
+        return "金額は円単位の整数で入力してください（小数点は使えません）";
+      if (amount < 1)
+        return "金額が未定の経費は申請できません。1円以上で入力してください";
       return "";
     },
     validateTime(r) {
@@ -144,7 +148,8 @@
       return Number(r.end.split(":")[0]) - Number(r.start.split(":")[0]);
     },
     duplicateGroup(s, name, id) {
-      return s.groups.some((g) => g.id !== id && g.name === name);
+      const norm = (v) => String(v ?? "").normalize("NFKC").trim();
+      return s.groups.some((g) => g.id !== id && norm(g.name) === norm(name));
     },
     expenseForEdit(row) {
       return { ...row, status: "submitted" };

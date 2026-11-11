@@ -74,6 +74,8 @@
     returned: "返却済み",
     todo: "未着手",
     done: "完了",
+    running: "活動中",
+    ended: "活動終了",
   };
   const pages = {
     dashboard: ["◈", "ダッシュボード", "OVERVIEW"],
@@ -93,6 +95,7 @@
       ["representative", "代表者", "text"],
       ["members", "所属人数", "number"],
       ["budget", "予算（円）", "number"],
+      ["status", "活動状態", "groupStatus"],
     ],
     applications: [
       ["title", "企画名", "text"],
@@ -343,7 +346,7 @@
           ["representative", "代表者"],
           ["members", "人数"],
           ["budget", "予算"],
-          ["status", "状態"],
+          ["status", "活動状態"],
           ["_remaining", "残額"],
         ];
       case "applications":
@@ -480,7 +483,7 @@
     if (p === "reservations")
       summary = `<div class="stats">${state.venues.map((v) => stat(esc(v.name), v.capacity + "<small> 名</small>", "予約 " + D.venueUsage(state, v.id) + " 件")).join("")}</div>`;
     if (p === "expenses")
-      summary = `<div class="stats">${stat("登録経費合計", money(D.expenses(state)), "全団体の経費")}${stat("総予算", money(state.groups.reduce((n, g) => n + Number(g.budget), 0)), "団体ごとの予算を合算")}</div>`;
+      summary = `<div class="stats">${stat("登録経費合計", money(D.expenses(state)), "全団体の経費（差し戻しを除く）")}${stat("総予算", money(state.groups.reduce((n, g) => n + Number(g.budget), 0)), "団体ごとの予算を合算")}</div>`;
     const exportButton =
       '<button class="secondary" id="export-csv">CSV出力</button>';
     return (
@@ -499,11 +502,7 @@
         .join(
           "",
         )}</select><span class="subtitle">${rows.length} 件表示</span></div>${exportButton}</div>` +
-<<<<<<< HEAD
       `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-copy="${esc(r.id)}">複製</button>` : ""}${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}">承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
-=======
-      `<div class="panel"><div class="table-scroll"><table><thead><tr>${cols.map((c) => `<th>${c[1]}</th>`).join("")}<th>操作</th></tr></thead><tbody>${rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${["title", "body", "name"].includes(c[0]) ? "description" : ""}">${cell(r, c[0])}</td>`).join("")}<td><div class="actions"><button class="secondary small" data-edit="${esc(r.id)}">編集</button>${p === "applications" ? `<button class="small" data-approve="${esc(r.id)}" ${["approved", "cancelled"].includes(r.status) ? "disabled" : ""}>承認</button><button class="danger small" data-cancel="${esc(r.id)}">取消</button>` : ""}${p === "loans" ? `<button class="small" data-return="${esc(r.id)}">返却</button>` : ""}${p === "tasks" ? `<button class="small" data-done="${esc(r.id)}">完了</button>` : ""}<button class="danger small" data-delete="${esc(r.id)}">削除</button></div></td></tr>`).join("") : `<tr><td colspan="${cols.length + 1}" class="empty">該当するデータはありません。</td></tr>`}</tbody></table></div></div>`
->>>>>>> 423fe2f2bcc37f9be64d148bd1bf54e4bca6853a
     );
   }
   function renderSettings() {
@@ -513,6 +512,7 @@
     );
   }
   function render() {
+    state.groups.forEach((g) => (g.status ??= "running"));
     let p = page();
     if (!pages[p]) {
       location.hash = "dashboard";
@@ -536,20 +536,19 @@
     bind(p);
     if (busy) lockButtons();
   }
-  function options(type) {
+  function options(type, current) {
     if (type === "group" || type === "audience")
       return [
         ...(type === "audience" ? [["all", "全体"]] : []),
-        ...state.groups.filter((g) => g.status !== "削除済").map((g) => [g.id, g.name]),
-      ];
-    if (type === "venue") return state.venues.map((v) => [v.id, v.name]);
-    if (type === "equipment") return state.equipment.map((e) => [e.id, e.name]);
-    if (type === "application")
-      return [
-        ["", "関連なし"],
-        ...state.applications.map((a) => [a.id, a.title]),
+        ...state.groups
+          .filter((g) => g.status !== "ended" || g.id === current)
+          .map((g) => [
+            g.id,
+            g.name + (g.status === "ended" ? "（活動終了）" : ""),
+          ]),
       ];
     const map = {
+      groupStatus: ["running", "ended"],
       applicationStatus: [
         "draft",
         "submitted",
@@ -580,29 +579,25 @@
     editing = { p, id, row, original };
     $("#dialog-title").textContent =
       pages[p][1] + " / " + (id ? "編集" : "新規登録");
-    $("#form-fields").innerHTML =
-      fields[p]
-        .map(([k, label, type]) => {
-          const value =
-            row[k] ?? (type === "date" ? today() : type === "number" ? "0" : "");
-          let input;
-          if (type === "textarea")
-            input = `<textarea name="${k}">${esc(value)}</textarea>`;
-          else if (["text", "number", "date", "time"].includes(type))
-            input = `<input name="${k}" type="${type}" ${type === "number" ? 'step="any"' : ""} value="${esc(value)}" ${["title", "name"].includes(k) ? "required" : ""}>`;
-          else
-            input = `<select name="${k}">${options(type)
-              .map(
-                ([v, t]) =>
-                  `<option value="${esc(v)}" ${String(value) === v ? "selected" : ""}>${esc(t)}</option>`,
-              )
-              .join("")}</select>`;
-          return `<div class="field"><label for="field-${k}">${label}</label>${input.replace('name="' + k + '"', 'id="field-' + k + '" name="' + k + '"')}</div>`;
-        })
-        .join("") +
-      (p === "loans"
-        ? `<div id="loan-availability-hint" class="subtitle"></div>`
-        : "");
+    $("#form-fields").innerHTML = fields[p]
+      .map(([k, label, type]) => {
+        const value =
+          row[k] ?? (type === "date" ? today() : type === "number" ? "0" : "");
+        let input;
+        if (type === "textarea")
+          input = `<textarea name="${k}">${esc(value)}</textarea>`;
+        else if (["text", "number", "date", "time"].includes(type))
+          input = `<input name="${k}" type="${type}" ${type === "number" ? 'step="any"' : ""} value="${esc(value)}" ${["title", "name"].includes(k) ? "required" : ""}>`;
+        else
+          input = `<select name="${k}">${options(type, value)
+            .map(
+              ([v, t]) =>
+                `<option value="${esc(v)}" ${String(value) === v ? "selected" : ""}>${esc(t)}</option>`,
+            )
+            .join("")}</select>`;
+        return `<div class="field"><label for="field-${k}">${label}</label>${input.replace('name="' + k + '"', 'id="field-' + k + '" name="' + k + '"')}</div>`;
+      })
+      .join("");
     $("#editor").showModal();
     if (p === "loans") updateLoanAvailabilityHint();
   }
