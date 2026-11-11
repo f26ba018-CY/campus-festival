@@ -368,7 +368,7 @@
     if (p === "reservations")
       summary = `<div class="stats">${state.venues.map((v) => stat(esc(v.name), v.capacity + "<small> 名</small>", "予約 " + D.venueUsage(state, v.id) + " 件")).join("")}</div>`;
     if (p === "expenses")
-      summary = `<div class="stats">${stat("登録経費合計", money(D.expenses(state)), "全団体の経費")}${stat("総予算", money(state.groups.reduce((n, g) => n + Number(g.budget), 0)), "団体ごとの予算を合算")}</div>`;
+      summary = `<div class="stats">${stat("登録経費合計", money(D.expenses(state)), "全団体の経費（差し戻しを除く）")}${stat("総予算", money(state.groups.reduce((n, g) => n + Number(g.budget), 0)), "団体ごとの予算を合算")}</div>`;
     const exportButton =
       '<button class="secondary" id="export-csv">CSV出力</button>';
     return (

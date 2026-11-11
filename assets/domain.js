@@ -19,12 +19,12 @@
     },
     expenses(s, groupId) {
       return s.expenses
-        .filter((x) => !groupId || x.groupId === groupId)
+        .filter((x) => x.status !== "rejected" && (!groupId || x.groupId === groupId))
         .reduce((n, x) => n + Number(x.amount), 0);
     },
     remaining(s, groupId) {
       const g = s.groups.find((g) => g.id === groupId);
-      return (g?.budget || 50000) - D.expenses(s);
+      return (g?.budget || 50000) - D.expenses(s, groupId);
     },
     venueConflict(s, r) {
       return s.reservations.some(
